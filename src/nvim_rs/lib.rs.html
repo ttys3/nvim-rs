@@ -1,0 +1,165 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Source to the Rust file `src/lib.rs`."><meta name="keywords" content="rust, rustlang, rust-lang"><title>lib.rs.html -- source</title><link rel="stylesheet" type="text/css" href="../../normalize.css"><link rel="stylesheet" type="text/css" href="../../rustdoc.css" id="mainThemeStyle"><link rel="stylesheet" type="text/css" href="../../dark.css"><link rel="stylesheet" type="text/css" href="../../light.css" id="themeStyle"><script src="../../storage.js"></script><noscript><link rel="stylesheet" href="../../noscript.css"></noscript><link rel="shortcut icon" href="../../favicon.ico"><style type="text/css">#crate-search{background-image:url("../../down-arrow.svg");}</style></head><body class="rustdoc source"><!--[if lte IE 8]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><nav class="sidebar"><div class="sidebar-menu">&#9776;</div><a href='../../nvim_rs/index.html'><div class='logo-container'><img src='../../rust-logo.png' alt='logo'></div></a></nav><div class="theme-picker"><button id="theme-picker" aria-label="Pick another theme!"><img src="../../brush.svg" width="18" alt="Pick another theme!"></button><div id="theme-choices"></div></div><script src="../../theme.js"></script><nav class="sub"><form class="search-form"><div class="search-container"><div><select id="crate-search"><option value="All crates">All crates</option></select><input class="search-input" name="search" disabled autocomplete="off" spellcheck="false" placeholder="Click or press ‘S’ to search, ‘?’ for more options…" type="search"></div><a id="settings-menu" href="../../settings.html"><img src="../../wheel.svg" width="18" alt="Change settings"></a></div></form></nav><section id="main" class="content"><pre class="line-numbers"><span id="1"> 1</span>
+<span id="2"> 2</span>
+<span id="3"> 3</span>
+<span id="4"> 4</span>
+<span id="5"> 5</span>
+<span id="6"> 6</span>
+<span id="7"> 7</span>
+<span id="8"> 8</span>
+<span id="9"> 9</span>
+<span id="10">10</span>
+<span id="11">11</span>
+<span id="12">12</span>
+<span id="13">13</span>
+<span id="14">14</span>
+<span id="15">15</span>
+<span id="16">16</span>
+<span id="17">17</span>
+<span id="18">18</span>
+<span id="19">19</span>
+<span id="20">20</span>
+<span id="21">21</span>
+<span id="22">22</span>
+<span id="23">23</span>
+<span id="24">24</span>
+<span id="25">25</span>
+<span id="26">26</span>
+<span id="27">27</span>
+<span id="28">28</span>
+<span id="29">29</span>
+<span id="30">30</span>
+<span id="31">31</span>
+<span id="32">32</span>
+<span id="33">33</span>
+<span id="34">34</span>
+<span id="35">35</span>
+<span id="36">36</span>
+<span id="37">37</span>
+<span id="38">38</span>
+<span id="39">39</span>
+<span id="40">40</span>
+<span id="41">41</span>
+<span id="42">42</span>
+<span id="43">43</span>
+<span id="44">44</span>
+<span id="45">45</span>
+<span id="46">46</span>
+<span id="47">47</span>
+<span id="48">48</span>
+<span id="49">49</span>
+<span id="50">50</span>
+<span id="51">51</span>
+<span id="52">52</span>
+<span id="53">53</span>
+<span id="54">54</span>
+<span id="55">55</span>
+<span id="56">56</span>
+<span id="57">57</span>
+<span id="58">58</span>
+<span id="59">59</span>
+<span id="60">60</span>
+<span id="61">61</span>
+<span id="62">62</span>
+<span id="63">63</span>
+<span id="64">64</span>
+<span id="65">65</span>
+<span id="66">66</span>
+<span id="67">67</span>
+<span id="68">68</span>
+<span id="69">69</span>
+<span id="70">70</span>
+<span id="71">71</span>
+<span id="72">72</span>
+<span id="73">73</span>
+<span id="74">74</span>
+<span id="75">75</span>
+<span id="76">76</span>
+<span id="77">77</span>
+<span id="78">78</span>
+<span id="79">79</span>
+<span id="80">80</span>
+<span id="81">81</span>
+</pre><div class="example-wrap"><pre class="rust ">
+<span class="doccomment">//! # Rust library for Neovim clients</span>
+<span class="doccomment">//!</span>
+<span class="doccomment">//! Implements support for rust plugins for [Neovim](https://github.com/neovim/neovim) through its msgpack-rpc API.</span>
+<span class="doccomment">//! # Examples</span>
+<span class="comment">/*
+//! ## Simple use case
+//! ```no_run
+//! use neovim_lib::{create, DefaultHandler};
+//! use async_std::task::block_on;
+//!
+//! let mut handler = DefaultHandler::new();
+//! let (nvim, _) = create::new_tcp(&quot;127.0.0.1:6666&quot;, handler).unwrap();
+//!
+//! let buffers = block_on(nvim.list_bufs()).unwrap();
+//! block_on(buffers[0].set_lines(&amp;nvim, 0, 0, true, vec![&quot;replace first line&quot;.to_owned()])).unwrap();
+//! block_on(nvim.command(&quot;vsplit&quot;)).unwrap();
+//! let windows = block_on(nvim.list_wins()).unwrap();
+//! block_on(windows[0].set_width(&amp;nvim, 10)).unwrap();
+//! ```
+//! ## Process notify events from neovim
+//!
+//! ```no_run
+//! use neovim_lib::{create, Handler, Value, Requester};
+//! use neovim_lib::runtime::{Sender, channel};
+//! use async_std::task::block_on;
+//! use async_trait::async_trait;
+//! use std::net::TcpStream;
+//!
+//! struct MyHandler(Sender&lt;(String, Vec&lt;Value&gt;)&gt;);
+//!
+//! #[async_trait]
+//! impl Handler for MyHandler {
+//!   type Writer = TcpStream;
+//!
+//!   async fn handle_notify(
+//!     &amp;self,
+//!     name: String,
+//!     args: Vec&lt;Value&gt;,
+//!     _: Requester&lt;TcpStream&gt;
+//!   ) {
+//!     self.0.send((name, args)).await;
+//!   }
+//! }
+//!
+//! let (mut sender, mut receiver) = channel(1);
+//! let mut handler = MyHandler(sender);
+//! let mut nvim = create::new_tcp(&quot;127.0.0.1:6666&quot;, handler).unwrap();
+//!
+//! let (event_name, args) = block_on(receiver.recv()).unwrap();
+//! ```
+*/</span>
+<span class="kw">extern</span> <span class="kw">crate</span> <span class="ident">rmp</span>;
+<span class="kw">extern</span> <span class="kw">crate</span> <span class="ident">rmpv</span>;
+<span class="attribute">#[<span class="ident">macro_use</span>]</span>
+<span class="kw">extern</span> <span class="kw">crate</span> <span class="ident">log</span>;
+
+<span class="attribute">#[<span class="ident">cfg</span>(<span class="ident">unix</span>)]</span>
+<span class="kw">extern</span> <span class="kw">crate</span> <span class="ident">unix_socket</span>;
+
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">rpc</span>;
+<span class="attribute">#[<span class="ident">macro_use</span>]</span>
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">neovim</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">callerror</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">create</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">neovim_api</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">neovim_api_manual</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">runtime</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">uioptions</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">exttypes</span>;
+<span class="kw">pub</span> <span class="kw">mod</span> <span class="ident">examples</span>;
+
+<span class="kw">pub</span> <span class="kw">use</span> <span class="kw">crate</span>::{
+  <span class="ident">callerror</span>::<span class="ident">CallError</span>,
+  <span class="ident">neovim</span>::<span class="ident">Neovim</span>,
+  <span class="ident">rpc</span>::{<span class="ident">handler</span>::<span class="ident">DefaultHandler</span>, <span class="ident">Requester</span>},
+  <span class="ident">uioptions</span>::{<span class="ident">UiAttachOptions</span>, <span class="ident">UiOption</span>},
+  <span class="ident">exttypes</span>::{<span class="ident">Buffer</span>, <span class="ident">Window</span>, <span class="ident">Tabpage</span>},
+};
+
+<span class="kw">pub</span> <span class="kw">use</span> <span class="kw">crate</span>::<span class="ident">rpc</span>::{<span class="ident">handler</span>::<span class="ident">Handler</span>, <span class="ident">model</span>::<span class="ident">IntoVal</span>};
+<span class="kw">pub</span> <span class="kw">use</span> <span class="ident">rmpv</span>::{<span class="ident">Integer</span>, <span class="ident">Utf8String</span>, <span class="ident">Value</span>};
+</pre></div>
+</section><section id="search" class="content hidden"></section><section class="footer"></section><script>window.rootPath = "../../";window.currentCrate = "nvim_rs";</script><script src="../../aliases.js"></script><script src="../../main.js"></script><script src="../../source-script.js"></script><script src="../../source-files.js"></script><script defer src="../../search-index.js"></script></body></html>

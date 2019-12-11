@@ -1,0 +1,1 @@
+initSidebarItems({"mod":[["scorched_earth","Scorched earth"]]});

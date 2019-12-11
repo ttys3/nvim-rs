@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["Neovim","An active Neovim session."]]});
