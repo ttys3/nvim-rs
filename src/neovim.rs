@@ -1,16 +1,21 @@
 //! An active neovim session.
 use std::{
   future::Future,
+  task::Poll,
   sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
   },
+  pin::Pin,
 };
 
 use futures::{
-  channel::oneshot,
+  channel::{oneshot, mpsc::{unbounded, UnboundedReceiver, UnboundedSender}},
   io::{AsyncRead, AsyncWrite, BufWriter},
   lock::Mutex,
+  poll,
+  stream::StreamExt,
+  sink::SinkExt,
 };
 
 use crate::{
@@ -79,6 +84,7 @@ where
   ) -> (
     Neovim<<H as Handler>::Writer>,
     impl Future<Output = Result<(), Box<LoopError>>>,
+    impl Future<Output = Result<(), Box<LoopError>>>,
   )
   where
     R: AsyncRead + Send + Unpin + 'static,
@@ -90,10 +96,15 @@ where
       queue: Arc::new(Mutex::new(Vec::new())),
     };
 
-    let req_t = req.clone();
-    let fut = Self::io_loop(handler, reader, req_t);
+    let (sender, receiver) = unbounded();
 
-    (req, fut)
+    let req_1 = req.clone();
+    let req_2 = req.clone();
+
+    let fut1 = Self::io_loop(reader, sender, req_1);
+    let fut2 = req_2.handle_rec(handler, receiver);
+
+    (req, fut1, fut2)
   }
 
   async fn send_msg(
@@ -170,13 +181,93 @@ where
     }
   }
 
-  async fn io_loop<H, R>(
+  async fn handle_rec<H>(
+    self,
     handler: H,
+    receiver: UnboundedReceiver<RpcMessage>
+  ) -> Result<(), Box<LoopError>>
+    where
+      H: Handler<Writer = W> + Spawner,
+  {
+    loop {
+      let neovim = self.clone(); 
+      neovim.handle_rec_next(handler.clone(), &mut receiver).await?
+    }
+  }
+
+  async fn handle_rec_next<H>(
+    self,
+    handler: H,
+    receiver: &mut UnboundedReceiver<RpcMessage>
+  ) -> Result<(), Box<LoopError>>
+    where
+      H: Handler<Writer = W> + Spawner,
+  {
+    let msg = receiver.next().await.unwrap();
+    self.handle_req_not(handler, msg, receiver).await?;
+    Ok(())
+  }
+
+  fn handle_req_not<H>(
+    self,
+    handler: H,
+    msg: RpcMessage,
+    receiver: &mut UnboundedReceiver<RpcMessage>
+  ) ->  Pin<Box<dyn Future<Output = Result<(), Box<LoopError>>>>>
+    where
+      H: Handler<Writer = W> + Spawner,
+  {
+    Box::pin(async move {
+      match msg {
+        RpcMessage::RpcNotification { method, params } => {
+          let neovim = self.clone();
+          handler.handle_notify(method, params, neovim).await;
+          Ok(())
+        }
+        RpcMessage::RpcRequest { msgid, method, params } => {
+          loop {
+            let neovim = self.clone();
+            match poll!(handler.handle_request(method, params, neovim)) {
+              Poll::Ready(val) => {
+                let response = match val {
+                  Ok(result) => RpcMessage::RpcResponse {
+                    msgid,
+                    result,
+                    error: Value::Nil,
+                  },
+                  Err(error) => RpcMessage::RpcResponse {
+                    msgid,
+                    result: Value::Nil,
+                    error,
+                  },
+                };
+                model::encode(neovim.writer, response)
+                  .await.unwrap();
+                  /*
+                  .unwrap_or_else(|e| {
+                    error!("Error sending response to request {}: '{}'", msgid, e);
+                  });
+                return Ok(());
+                */
+              }
+              _ => {
+                let neovim = self.clone();
+                neovim.handle_rec_next(handler, receiver).await?
+              }
+            }
+          }
+        }
+        _ => panic!(),
+      }
+    })
+  }
+
+  async fn io_loop<R>(
     mut reader: R,
-    neovim: Neovim<H::Writer>,
+    sender: UnboundedSender<RpcMessage>,
+    neovim: Neovim<W>
   ) -> Result<(), Box<LoopError>>
   where
-    H: Handler + Spawner,
     R: AsyncRead + Send + Unpin + 'static,
   {
     let mut rest: Vec<u8> = vec![];
@@ -192,35 +283,10 @@ where
 
       debug!("Get message {:?}", msg);
       match msg {
-        RpcMessage::RpcRequest {
-          msgid,
-          method,
-          params,
+        msg @ RpcMessage::RpcRequest {
+          ..
         } => {
-          let neovim = neovim.clone();
-          let handler_c = handler.clone();
-          handler.spawn(async move {
-            let neovim_t = neovim.clone();
-            let response =
-              match handler_c.handle_request(method, params, neovim_t).await {
-                Ok(result) => RpcMessage::RpcResponse {
-                  msgid,
-                  result,
-                  error: Value::Nil,
-                },
-                Err(error) => RpcMessage::RpcResponse {
-                  msgid,
-                  result: Value::Nil,
-                  error,
-                },
-              };
-
-            model::encode(neovim.writer, response)
-              .await
-              .unwrap_or_else(|e| {
-                error!("Error sending response to request {}: '{}'", msgid, e);
-              });
-          });
+          sender.send(msg).await.unwrap();
         }
         RpcMessage::RpcResponse {
           msgid,
@@ -238,14 +304,10 @@ where
               .map_err(|r| (msgid, r.expect("This was an OK(_)")))?;
           }
         }
-        RpcMessage::RpcNotification { method, params } => {
-          let handler_c = handler.clone();
-          let neovim = neovim.clone();
-          handler.spawn(async move {
-            handler_c.handle_notify(method, params, neovim).await
-          });
+        msg @ RpcMessage::RpcNotification { .. } => {
+          sender.send(msg).await.unwrap();
         }
-      };
+      }
     }
   }
 
