@@ -7,6 +7,7 @@ use std::{
   process::Stdio,
 };
 
+
 #[cfg(unix)]
 use tokio::net::UnixStream;
 
@@ -46,7 +47,8 @@ pub async fn new_tcp<A, H>(
   handler: H,
 ) -> io::Result<(
   Neovim<Compat<WriteHalf<TcpStream>>>,
-  JoinHandle<Result<(), Box<LoopError>>>,
+  impl Future<Output = Result<(), Box<LoopError>>>,
+  impl Future<Output = Result<(), Box<LoopError>>>,
 )>
 where
   H: Handler<Writer = Compat<WriteHalf<TcpStream>>>,
@@ -54,14 +56,11 @@ where
 {
   let stream = TcpStream::connect(addr).await?;
   let (reader, writer) = split(stream);
-  let (neovim, io) = Neovim::<Compat<WriteHalf<TcpStream>>>::new(
+  Ok(Neovim::<Compat<WriteHalf<TcpStream>>>::new(
     reader.compat_read(),
     writer.compat_write(),
     handler,
-  );
-  let io_handle = spawn(io);
-
-  Ok((neovim, io_handle))
+  ))
 }
 
 #[cfg(unix)]
@@ -71,21 +70,19 @@ pub async fn new_unix_socket<H, P: AsRef<Path> + Clone>(
   handler: H,
 ) -> io::Result<(
   Neovim<Compat<WriteHalf<UnixStream>>>,
-  JoinHandle<Result<(), Box<LoopError>>>,
+  impl Future<Output = Result<(), Box<LoopError>>>,
+  impl Future<Output = Result<(), Box<LoopError>>>,
 )>
 where
   H: Handler<Writer = Compat<WriteHalf<UnixStream>>> + Send + 'static,
 {
   let stream = UnixStream::connect(path).await?;
   let (reader, writer) = split(stream);
-  let (neovim, io) = Neovim::<Compat<WriteHalf<UnixStream>>>::new(
+  Ok(Neovim::<Compat<WriteHalf<UnixStream>>>::new(
     reader.compat_read(),
     writer.compat_write(),
     handler,
-  );
-  let io_handle = spawn(io);
-
-  Ok((neovim, io_handle))
+  ))
 }
 
 /// Connect to a neovim instance by spawning a new one
@@ -93,7 +90,8 @@ pub async fn new_child<H>(
   handler: H,
 ) -> io::Result<(
   Neovim<Compat<ChildStdin>>,
-  JoinHandle<Result<(), Box<LoopError>>>,
+  impl Future<Output = Result<(), Box<LoopError>>>,
+  impl Future<Output = Result<(), Box<LoopError>>>,
   Child,
 )>
 where
@@ -112,7 +110,8 @@ pub async fn new_child_path<H, S: AsRef<Path>>(
   handler: H,
 ) -> io::Result<(
   Neovim<Compat<ChildStdin>>,
-  JoinHandle<Result<(), Box<LoopError>>>,
+  impl Future<Output = Result<(), Box<LoopError>>>,
+  impl Future<Output = Result<(), Box<LoopError>>>,
   Child,
 )>
 where
@@ -129,7 +128,8 @@ pub async fn new_child_cmd<H>(
   handler: H,
 ) -> io::Result<(
   Neovim<Compat<ChildStdin>>,
-  JoinHandle<Result<(), Box<LoopError>>>,
+  impl Future<Output = Result<(), Box<LoopError>>>,
+  impl Future<Output = Result<(), Box<LoopError>>>,
   Child,
 )>
 where
@@ -146,11 +146,9 @@ where
     .take()
     .ok_or_else(|| Error::new(ErrorKind::Other, "Can't open stdin"))?
     .compat_write();
+  let (n, f1, f2) = Neovim::<Compat<ChildStdin>>::new(stdout, stdin, handler);
+  Ok((n, f1, f2, child))
 
-  let (neovim, io) = Neovim::<Compat<ChildStdin>>::new(stdout, stdin, handler);
-  let io_handle = spawn(io);
-
-  Ok((neovim, io_handle, child))
 }
 
 /// Connect to the neovim instance that spawned this process over stdin/stdout
@@ -158,17 +156,15 @@ pub async fn new_parent<H>(
   handler: H,
 ) -> (
   Neovim<Compat<Stdout>>,
-  JoinHandle<Result<(), Box<LoopError>>>,
+  impl Future<Output = Result<(), Box<LoopError>>>,
+  impl Future<Output = Result<(), Box<LoopError>>>,
 )
 where
   H: Handler<Writer = Compat<Stdout>>,
 {
-  let (neovim, io) = Neovim::<Compat<Stdout>>::new(
+  Neovim::<Compat<Stdout>>::new(
     stdin().compat_read(),
     stdout().compat_write(),
     handler,
-  );
-  let io_handle = spawn(io);
-
-  (neovim, io_handle)
+  )
 }

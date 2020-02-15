@@ -67,7 +67,7 @@ async fn main() {
     buf: Arc::new(Mutex::new(vec![])),
   };
 
-  let (nvim, io_handle, _child) = create::new_child_cmd(
+  let (nvim, io_handle, _method_handle, _child) = create::new_child_cmd(
     Command::new(NVIMPATH)
       .args(&["-u", "NONE", "--embed", "--headless"])
       .env("NVIM_LOG_FILE", "nvimlog"),

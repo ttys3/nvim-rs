@@ -46,43 +46,43 @@ criterion = "0.3.0"
 lto = true
 debug = true
 
-[[bench]]
-name = "rpc_tokio"
-harness = false
-required-features = ["use_tokio"]
-
-[[example]]
-name = "handler_drop"
-required-features = ["use_tokio"]
-
-[[example]]
-name = "quitting"
-required-features = ["use_tokio"]
-
-[[example]]
-name = "scorched_earth"
-required-features = ["use_tokio"]
-
-[[example]]
-name = "bench_tokio"
-required-features = ["use_tokio"]
-
-[[example]]
-name = "bench_async-std"
-required-features = ["use_async-std"]
-
-[[example]]
-name = "bench_sync"
-required-features = ["use_neovim_lib"]
-
-[[example]]
-name = "scorched_earth_as"
-required-features = ["use_async-std"]
+#[[bench]]
+#name = "rpc_tokio"
+#harness = false
+#required-features = ["use_tokio"]
+#
+#[[example]]
+#name = "handler_drop"
+#required-features = ["use_tokio"]
+#
+#[[example]]
+#name = "quitting"
+#required-features = ["use_tokio"]
+#
+#[[example]]
+#name = "scorched_earth"
+#required-features = ["use_tokio"]
+#
+#[[example]]
+#name = "bench_tokio"
+#required-features = ["use_tokio"]
+#
+#[[example]]
+#name = "bench_async-std"
+#required-features = ["use_async-std"]
+#
+#[[example]]
+#name = "bench_sync"
+#required-features = ["use_neovim_lib"]
+#
+#[[example]]
+#name = "scorched_earth_as"
+#required-features = ["use_async-std"]
 
 [[test]]
 name = "nested_requests"
 required-features = ["use_tokio"]
 
-[[test]]
-name = "connecting"
-path = "tests/connecting/mod.rs"
+#[[test]]
+#name = "connecting"
+#path = "tests/connecting/mod.rs"

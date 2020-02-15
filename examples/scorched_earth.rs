@@ -102,7 +102,7 @@ async fn main() {
   };
   let handler: NeovimHandler = NeovimHandler(Arc::new(Mutex::new(p)));
 
-  let (nvim, io_handler) = create::new_parent(handler).await;
+  let (nvim, io_handler, _method_handler) = create::new_parent(handler).await;
 
   // Any error should probably be logged, as stderr is not visible to users.
   match io_handler.await {

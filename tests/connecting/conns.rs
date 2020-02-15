@@ -37,7 +37,7 @@ async fn can_connect_via_tcp() {
   // wait at most 1 second for neovim to start and create the tcp socket
   let start = Instant::now();
 
-  let (nvim, _io_handle) = loop {
+  let (nvim, _io_handle, _method_handle) = loop {
     sleep(Duration::from_millis(100));
 
     let handler = DummyHandler::new();
@@ -92,7 +92,7 @@ async fn can_connect_via_unix_socket() {
   }
 
   let handler = DummyHandler::new();
-  let (nvim, _io_handle) = create::new_unix_socket(&socket_path, handler)
+  let (nvim, _io_handle, _method_handle) = create::new_unix_socket(&socket_path, handler)
     .await
     .expect(&format!(
       "Unable to connect to neovim's unix socket at {:?}",

@@ -122,11 +122,15 @@ where
 
     let (sender, receiver) = oneshot::channel();
 
-    self.queue.lock().await.push((msgid, sender));
+    let mut q = self.queue.lock().await;
+    eprintln!("[Id {}]: Queue before push: {:#?}", msgid, q);
+    q.push((msgid, sender));
+    eprintln!("[Id {}]: Queue after push: {:#?}", msgid, q);
 
     let writer = self.writer.clone();
     model::encode(writer, req).await?;
 
+    eprintln!("[Id {}]: Receiver before return: {:#?}", msgid, receiver);
     Ok(receiver)
   }
 
@@ -140,6 +144,7 @@ where
       .await
       .map_err(|e| CallError::SendError(*e, method.to_string()))?;
 
+    eprintln!("Receiver before await: {:#?}", receiver);
     match receiver.await {
       // Result<Result<Result<Value, Value>, Arc<DecodeError>>, RecvError>
       Ok(Ok(r)) => Ok(r), // r is Result<Value, Value>, i.e. we got an answer
@@ -184,20 +189,20 @@ where
   async fn handle_rec<H>(
     self,
     handler: H,
-    receiver: UnboundedReceiver<RpcMessage>
+    mut receiver: UnboundedReceiver<RpcMessage>
   ) -> Result<(), Box<LoopError>>
     where
       H: Handler<Writer = W> + Spawner,
   {
     loop {
       let neovim = self.clone(); 
-      neovim.handle_rec_next(handler.clone(), &mut receiver).await?
+      neovim.handle_rec_next(&handler, &mut receiver).await?
     }
   }
 
   async fn handle_rec_next<H>(
     self,
-    handler: H,
+    handler: &H,
     receiver: &mut UnboundedReceiver<RpcMessage>
   ) -> Result<(), Box<LoopError>>
     where
@@ -208,12 +213,12 @@ where
     Ok(())
   }
 
-  fn handle_req_not<H>(
+  fn handle_req_not<'a, H>(
     self,
-    handler: H,
+    handler: &'a H,
     msg: RpcMessage,
-    receiver: &mut UnboundedReceiver<RpcMessage>
-  ) ->  Pin<Box<dyn Future<Output = Result<(), Box<LoopError>>>>>
+    receiver: &'a mut UnboundedReceiver<RpcMessage>
+  ) ->  Pin<Box<dyn Future<Output = Result<(), Box<LoopError>>> + Send + 'a>>
     where
       H: Handler<Writer = W> + Spawner,
   {
@@ -226,8 +231,7 @@ where
         }
         RpcMessage::RpcRequest { msgid, method, params } => {
           loop {
-            let neovim = self.clone();
-            match poll!(handler.handle_request(method, params, neovim)) {
+            match poll!(handler.handle_request(method.clone(), params.clone(), self.clone())) {
               Poll::Ready(val) => {
                 let response = match val {
                   Ok(result) => RpcMessage::RpcResponse {
@@ -241,7 +245,7 @@ where
                     error,
                   },
                 };
-                model::encode(neovim.writer, response)
+                model::encode(self.writer.clone(), response)
                   .await.unwrap();
                   /*
                   .unwrap_or_else(|e| {
@@ -264,7 +268,7 @@ where
 
   async fn io_loop<R>(
     mut reader: R,
-    sender: UnboundedSender<RpcMessage>,
+    mut sender: UnboundedSender<RpcMessage>,
     neovim: Neovim<W>
   ) -> Result<(), Box<LoopError>>
   where
@@ -294,6 +298,7 @@ where
           error,
         } => {
           let sender = find_sender(&neovim.queue, msgid).await?;
+          eprintln!("Sender: {:?}", sender);
           if error == Value::Nil {
             sender
               .send(Ok(Ok(result)))
@@ -345,13 +350,19 @@ async fn find_sender(
   queue: &Queue,
   msgid: u64,
 ) -> Result<oneshot::Sender<ResponseResult>, Box<LoopError>> {
+  eprintln!("Looking for sender for id {}", msgid);
   let mut queue = queue.lock().await;
 
   let pos = match queue.iter().position(|req| req.0 == msgid) {
     Some(p) => p,
     None => return Err(msgid.into()),
   };
-  Ok(queue.remove(pos).1)
+  eprintln!("Found sender at pos {}, queue length was {}", pos, queue.len());
+
+  eprintln!("[Id {}]: Queue before sender removal: {:#?}", msgid, queue);
+  let q = queue.remove(pos).1;
+  eprintln!("[Id {}]: Queue after sender removal: {:#?}", msgid, queue);
+  Ok(q)
 }
 
 #[cfg(all(test, feature = "use_tokio"))]

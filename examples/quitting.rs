@@ -11,7 +11,7 @@ const NVIMPATH: &str = "neovim/build/bin/nvim";
 async fn main() {
   let handler = DummyHandler::new();
 
-  let (nvim, _io_handle, _child) = create::new_child_cmd(
+  let (nvim, _io_handle, _method_handle, _child) = create::new_child_cmd(
     Command::new(NVIMPATH)
       .args(&["-u", "NONE", "--embed", "--headless"])
       .env("NVIM_LOG_FILE", "nvimlog"),
